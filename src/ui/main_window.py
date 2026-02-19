@@ -55,6 +55,20 @@ class MainWindow:
         self._build_ui()
         self._load_jobs()
 
+    def _on_tree_double_click(self, _event=None):
+        # Si es viewer, no abrimos edit
+        if not self.can_edit:
+            return
+
+        # Asegura que haya una fila seleccionada
+        selected = self.tree.selection()
+        if not selected:
+            return
+
+        # Reutilizamos la lógica existente
+        self._jobs_edit()
+
+
     # --------------------------------------------------
     # UI STYLE
     # --------------------------------------------------
@@ -185,6 +199,8 @@ class MainWindow:
         vsb = ttk.Scrollbar(inner, orient="vertical", command=self.tree.yview)
         vsb.pack(side="right", fill="y")
         self.tree.configure(yscrollcommand=vsb.set)
+
+        self.tree.bind("<Double-1>", self._on_tree_double_click)
 
         for c in cols:
             self.tree.heading(c, text=c)
