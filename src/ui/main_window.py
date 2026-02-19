@@ -5,26 +5,33 @@ from tkinter import ttk
 from src.core.config import AppConfig
 from src.storage.database import Database
 from src.storage.jobs_repository import JobsRepository
+from src.storage.groups_repository import GroupsRepository
 
 
 class MainWindow:
+    # DB Severity -> Incident Priority (solo front)
+    SEVERITY_TO_PRIORITY = {
+        3: "Priority 2",
+        4: "Priority 3",
+        5: "Priority 4",
+    }
+
     def __init__(self, config: AppConfig, username: str, role_code: str = ""):
         self.config = config
         self.username = username
-
         self.role_code = (role_code or "viewer").lower().strip()
+
         self.is_admin = self.role_code == "admin"
         self.is_operator = self.role_code == "operator"
         self.is_viewer = self.role_code == "viewer"
         self.can_edit = self.is_admin or self.is_operator
 
-
         self.root = tk.Tk()
         self.root.title(self.config.title)
         self.root.geometry(f"{self.config.main_width}x{self.config.main_height}")
-        self.root.minsize(900, 480)
+        self.root.minsize(1000, 520)
 
-        # Theme colors from AppConfig (.env)
+        # Theme colors (.env)
         self.bg = self.config.back_color
         self.label_bg = self.config.label_color
         self.button_bg = self.config.button_color
@@ -36,17 +43,21 @@ class MainWindow:
 
         self.root.configure(bg=self.bg)
 
-        # DB / Repos
+        # DB
         self.db = Database()
         self.jobs_repo = JobsRepository(self.db)
+        self.groups_repo = GroupsRepository(self.db)
 
-        # Search debounce
         self._search_after_id = None
 
         self._setup_ttk_style()
         self._build_menu()
         self._build_ui()
         self._load_jobs()
+
+    # --------------------------------------------------
+    # UI STYLE
+    # --------------------------------------------------
 
     def _setup_ttk_style(self):
         style = ttk.Style()
@@ -63,45 +74,57 @@ class MainWindow:
             rowheight=24,
             borderwidth=0,
         )
+
         style.configure(
             "Treeview.Heading",
             font=("Segoe UI", 10, "bold"),
         )
 
+    # --------------------------------------------------
+    # MENU
+    # --------------------------------------------------
+
     def _build_menu(self):
         menubar = tk.Menu(self.root)
 
+        # Jobs
         jobs_menu = tk.Menu(menubar, tearoff=0)
         if self.can_edit:
             jobs_menu.add_command(label="Agregar", command=self._jobs_add)
             jobs_menu.add_command(label="Editar", command=self._jobs_edit)
         menubar.add_cascade(label="Jobs", menu=jobs_menu)
 
+        # Groups
         groups_menu = tk.Menu(menubar, tearoff=0)
         if self.can_edit:
             groups_menu.add_command(label="Agregar", command=self._groups_add)
             groups_menu.add_command(label="Editar", command=self._groups_edit)
         menubar.add_cascade(label="Groups", menu=groups_menu)
 
+        # User
         user_menu = tk.Menu(menubar, tearoff=0)
         user_menu.add_command(label="Cambiar password", command=self._user_change_password)
 
-        # ✅ Solo admin/root: agregar usuario y editar usuario
         if self.is_admin:
             user_menu.add_command(label="Agregar usuario", command=self._user_add)
             user_menu.add_command(label="Editar usuario", command=self._user_edit)
 
         menubar.add_cascade(label="User", menu=user_menu)
+
         self.root.config(menu=menubar)
 
+    # --------------------------------------------------
+    # LAYOUT
+    # --------------------------------------------------
+
     def _build_ui(self):
-        # Top bar: username + search
+        # Top bar
         top = tk.Frame(self.root, bg=self.bg)
         top.pack(fill="x", padx=16, pady=(14, 8))
 
         user_lbl = tk.Label(
             top,
-            text=f"Usuario: {self.username}",
+            text=f"Usuario: {self.username} ({self.role_code})",
             bg=self.bg,
             fg=self.text_color,
             font=("Segoe UI", 10, "bold"),
@@ -145,8 +168,17 @@ class MainWindow:
         inner = tk.Frame(border, bg=self.bg)
         inner.pack(fill="both", expand=True, padx=2, pady=2)
 
-        # ✅ Nuevas columnas con join
-        cols = ("Id", "Type", "JobName", "GroupCode", "GroupName", "ServiceName", "Severity", "CreatedAtUtc")
+        cols = (
+            "Id",
+            "Type",
+            "JobName",
+            "GroupCode",
+            "GroupName",
+            "ServiceName",
+            "IncidentPriority",
+            "CreatedAtUtc",
+        )
+
         self.tree = ttk.Treeview(inner, columns=cols, show="headings")
         self.tree.pack(side="left", fill="both", expand=True)
 
@@ -154,19 +186,21 @@ class MainWindow:
         vsb.pack(side="right", fill="y")
         self.tree.configure(yscrollcommand=vsb.set)
 
-        # Headings
         for c in cols:
             self.tree.heading(c, text=c)
 
-        # Column sizes (ajústalo a tu gusto)
         self.tree.column("Id", width=60, anchor="w", stretch=False)
         self.tree.column("Type", width=110, anchor="w", stretch=False)
-        self.tree.column("JobName", width=320, anchor="w")
+        self.tree.column("JobName", width=300, anchor="w")
         self.tree.column("GroupCode", width=120, anchor="w", stretch=False)
         self.tree.column("GroupName", width=220, anchor="w")
         self.tree.column("ServiceName", width=200, anchor="w")
-        self.tree.column("Severity", width=90, anchor="w", stretch=False)
+        self.tree.column("IncidentPriority", width=130, anchor="w", stretch=False)
         self.tree.column("CreatedAtUtc", width=170, anchor="w", stretch=False)
+
+    # --------------------------------------------------
+    # DATA
+    # --------------------------------------------------
 
     def _on_search_key(self, _event=None):
         if self._search_after_id:
@@ -182,20 +216,102 @@ class MainWindow:
                 self.tree.delete(item)
 
             for j in jobs:
+                severity_int = int(j.severity) if j.severity else None
+                incident_priority = self.SEVERITY_TO_PRIORITY.get(severity_int, "")
+
                 self.tree.insert(
                     "",
                     "end",
-                    values=(j.id, j.type, j.job_name, j.group_code, j.group_name, j.service_name, j.severity, j.created_at_utc)
+                    values=(
+                        j.id,
+                        j.type,
+                        j.job_name,
+                        j.group_code,
+                        j.group_name,
+                        j.service_name,
+                        incident_priority,
+                        j.created_at_utc,
+                    )
                 )
+
         except Exception as e:
             messagebox.showerror("Error", f"No se pudieron cargar los jobs:\n{e}")
 
-    # ===== Menu actions (stubs por ahora) =====
+    # --------------------------------------------------
+    # MENU ACTIONS
+    # --------------------------------------------------
+
     def _jobs_add(self):
-        messagebox.showinfo("Jobs", "Agregar Job (pendiente).")
+        if not self.can_edit:
+            messagebox.showwarning("Permisos", "No tienes permisos para agregar Jobs.")
+            return
+
+        try:
+            groups = self.groups_repo.list_groups(limit=2000)
+
+            from src.ui.views.add_job_view import AddJobWindow
+            w = AddJobWindow(self.root, self.config, self.jobs_repo, groups)
+            self.root.wait_window(w.win)
+
+            if w.created:
+                self._load_jobs()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo abrir Agregar Job:\n{e}")
 
     def _jobs_edit(self):
-        messagebox.showinfo("Jobs", "Editar Job (pendiente).")
+        if not self.can_edit:
+            messagebox.showwarning("Permisos", "No tienes permisos para editar Jobs.")
+            return
+
+        selected = self.tree.selection()
+        if not selected:
+            messagebox.showwarning("Jobs", "Selecciona un Job para editar.")
+            return
+
+        item_id = selected[0]
+        values = self.tree.item(item_id, "values")
+
+        # Columns order in tree:
+        # ("Id","Type","JobName","GroupCode","GroupName","ServiceName","IncidentPriority","CreatedAtUtc")
+        try:
+            job_id = int(values[0])
+        except Exception:
+            messagebox.showerror("Jobs", "Id inválido en la selección.")
+            return
+
+        job = {
+            "id": job_id,
+            "type": values[1],
+            "job_name": values[2],
+            "group_code": values[3],
+            "incident_priority": values[6],  # "Priority 2/3/4"
+            # severity_int lo inferimos del priority
+            "severity_int": None,
+            "created_at_utc": values[7],
+        }
+
+        # Infer severity from IncidentPriority (front only)
+        priority_to_sev = {
+            "Priority 2": 3,
+            "Priority 3": 4,
+            "Priority 4": 5,
+        }
+        job["severity_int"] = priority_to_sev.get(job["incident_priority"])
+
+        try:
+            groups = self.groups_repo.list_groups(limit=2000)
+
+            from src.ui.views.edit_job_view import EditJobWindow
+            w = EditJobWindow(self.root, self.config, self.jobs_repo, groups, job)
+            self.root.wait_window(w.win)
+
+            if w.updated:
+                self._load_jobs()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo abrir Editar Job:\n{e}")
+
 
     def _groups_add(self):
         messagebox.showinfo("Groups", "Agregar Group (pendiente).")
@@ -204,13 +320,15 @@ class MainWindow:
         messagebox.showinfo("Groups", "Editar Group (pendiente).")
 
     def _user_change_password(self):
-        messagebox.showinfo("User", "Cambiar password (pendiente en MainWindow).")
+        messagebox.showinfo("User", "Cambiar password (pendiente aquí).")
 
     def _user_add(self):
-        messagebox.showinfo("User", "Agregar usuario (solo admin/root) (pendiente).")
+        messagebox.showinfo("User", "Agregar usuario (pendiente).")
 
     def _user_edit(self):
-        messagebox.showinfo("User", "Editar usuario (solo admin/root) (pendiente).")
+        messagebox.showinfo("User", "Editar usuario (pendiente).")
+
+    # --------------------------------------------------
 
     def run(self):
         self.root.mainloop()

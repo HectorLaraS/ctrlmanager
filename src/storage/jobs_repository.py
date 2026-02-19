@@ -82,3 +82,36 @@ class JobsRepository:
                 )
             )
         return out
+
+    def add_job(self, type_: str, job_name: str, group_code: str, severity: str) -> None:
+        """
+        Inserta un Job. Usamos GETUTCDATE() para CreatedAtUtc.
+        Asumimos que Id es IDENTITY.
+        """
+        sql = """
+        INSERT INTO dbo.Jobs_information (Type, JobName, GroupCode, Severity, CreatedAtUtc)
+        VALUES (?, ?, ?, ?, GETUTCDATE());
+        """
+
+        with self.db.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(sql, (type_, job_name, group_code, severity))
+            conn.commit()
+
+    def update_job(self, job_id: int, type_: str, job_name: str, group_code: str, severity: int) -> None:
+        sql = """
+        UPDATE dbo.Jobs_information
+        SET
+            Type = ?,
+            JobName = ?,
+            GroupCode = ?,
+            Severity = ?
+        WHERE Id = ?;
+        """
+
+        with self.db.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(sql, (type_, job_name, group_code, int(severity), int(job_id)))
+            if cur.rowcount == 0:
+                raise ValueError("No se actualizó ningún registro (Id no encontrado).")
+            conn.commit()
