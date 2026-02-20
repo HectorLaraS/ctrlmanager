@@ -9,6 +9,9 @@ from src.storage.groups_repository import GroupsRepository
 from src.storage.user_repository import UserRepository
 from src.service.user_service import UserService
 
+# NUEVO: modal reutilizable
+from src.ui.views.change_password_view import ChangePasswordWindow
+
 
 class MainWindow:
     # DB Severity -> Incident Priority (solo front)
@@ -369,7 +372,20 @@ class MainWindow:
 
 
     def _user_change_password(self):
-        messagebox.showinfo("User", "Cambiar password (pendiente aquí).")
+        try:
+            mode = "admin" if self.is_admin else "self"
+
+            w = ChangePasswordWindow(
+                parent=self.root,
+                config=self.config,
+                user_service=self.user_service,
+                mode=mode,
+                logged_username=self.username,
+                target_username=self.username,  # default (admin lo puede cambiar)
+            )
+            self.root.wait_window(w.win)
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo abrir Cambiar password:\n{e}")
 
     def _user_add(self):
         if not self.is_admin:

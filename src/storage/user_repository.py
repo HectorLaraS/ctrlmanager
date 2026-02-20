@@ -125,8 +125,42 @@ class UserRepository:
             must_change_password=bool(row[4]) if row[4] is not None else False,
             is_active=bool(row[5]) if row[5] is not None else True,
         )
-    
-    def update_password(self, username: str, new_hash: str, algo: str = "argon2id") -> None:
+
+    # ==========================================================
+    # NUEVO: update_password con firma compatible con UserService
+    # ==========================================================
+    def update_password(
+        self,
+        username: str,
+        password_hash: str,
+        password_algo: str = "argon2id",
+        must_change_password: int = 0,
+    ) -> None:
+        """
+        Actualiza password_hash/password_algo y setea must_change_password según se indique.
+        - Para "change own password" normalmente must_change_password=0
+        - Para "admin_change_password" puedes mandar 1 si quieres forzar cambio al login
+        """
+        sql = f"""
+        UPDATE {self.table}
+        SET
+            {self.col_pass} = ?,
+            {self.col_algo} = ?,
+            {self.col_must} = ?
+        WHERE {self.col_user} = ?;
+        """
+
+        with self.db.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(sql, (password_hash, password_algo, int(must_change_password), username))
+            if cur.rowcount == 0:
+                raise ValueError("No se actualizó password (username no encontrado).")
+            conn.commit()
+
+    # ==========================================================
+    # (LEGACY) Tu método original preservado sin cambios de lógica
+    # ==========================================================
+    def _update_password_legacy(self, username: str, new_hash: str, algo: str = "argon2id") -> None:
         # Nota: usamos parámetros para valores, pero tabla/columnas vienen del env
         sql = f"""
         UPDATE {self.table}
@@ -188,4 +222,3 @@ class UserRepository:
                 ),
             )
             conn.commit()
-

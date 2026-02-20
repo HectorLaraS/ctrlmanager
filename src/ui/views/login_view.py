@@ -9,10 +9,13 @@ from src.storage.database import Database
 from src.storage.user_repository import UserRepository
 from src.service.auth_service import AuthService, AuthError
 
+# NUEVO: usamos UserService para cambiar password (argon2)
+from src.service.user_service import UserService
+
 # IMPORT QUE ME PEDISTE (ojo: tu ruta)
 from src.ui.main_window import MainWindow
 
-# Change password modal (tu ruta)
+# NUEVO: modal reutilizable
 from src.ui.views.change_password_view import ChangePasswordWindow
 
 
@@ -49,6 +52,9 @@ class LoginWindow:
         self.db = Database()
         self.user_repo = UserRepository(self.db)
         self.auth = AuthService(self.user_repo)
+
+        # UserService (para cambio de password)
+        self.user_service = UserService(self.user_repo)
 
         self._build_ui()
 
@@ -188,7 +194,13 @@ class LoginWindow:
                     "Debes cambiar tu password antes de continuar."
                 )
 
-                cp = ChangePasswordWindow(self.config, result.username, self.auth)
+                cp = ChangePasswordWindow(
+                    parent=self.root,
+                    config=self.config,
+                    user_service=self.user_service,
+                    mode="self",
+                    logged_username=result.username,
+                )
                 self.root.wait_window(cp.win)
 
                 # User cancelled

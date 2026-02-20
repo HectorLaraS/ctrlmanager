@@ -76,4 +76,10 @@ class AuthService:
         new_hash = self._argon2.hash(new_password)
 
         # update en DB + must_change_password = 0
-        self.user_repo.update_password(username, new_hash, "argon2id")
+        # CAMBIO MINIMO: usar firma nueva del repo
+        self.user_repo.update_password(
+            username=username,
+            password_hash=new_hash,
+            password_algo="argon2id",
+            must_change_password=0,
+        )
