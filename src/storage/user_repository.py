@@ -75,3 +75,48 @@ class UserRepository:
                 raise ValueError("No se actualizó ningún usuario (username no encontrado).")
             conn.commit()
 
+    def add_user(
+        self,
+        username: str,
+        display_name: str,
+        email: str | None,
+        password_hash: str,
+        password_algo: str,
+        role_code: str,
+        is_active: int = 1,
+        must_change_password: int = 1,
+    ) -> None:
+        # Nota: usamos la tabla real por env (USERS_TABLE)
+        # y las columnas reales si ya las mapeaste.
+        # Para este insert usamos nombres estándar de tu tabla wt_users.
+        sql = f"""
+        INSERT INTO {self.table} (
+            username,
+            display_name,
+            email,
+            password_hash,
+            password_algo,
+            role_code,
+            is_active,
+            must_change_password
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+        """
+
+        with self.db.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                sql,
+                (
+                    username,
+                    display_name,
+                    email,
+                    password_hash,
+                    password_algo,
+                    role_code,
+                    int(is_active),
+                    int(must_change_password),
+                ),
+            )
+            conn.commit()
+

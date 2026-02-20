@@ -6,6 +6,8 @@ from src.core.config import AppConfig
 from src.storage.database import Database
 from src.storage.jobs_repository import JobsRepository
 from src.storage.groups_repository import GroupsRepository
+from src.storage.user_repository import UserRepository
+from src.service.user_service import UserService
 
 
 class MainWindow:
@@ -47,6 +49,8 @@ class MainWindow:
         self.db = Database()
         self.jobs_repo = JobsRepository(self.db)
         self.groups_repo = GroupsRepository(self.db)
+        self.user_repo = UserRepository(self.db)
+        self.user_service = UserService(self.user_repo)
 
         self._search_after_id = None
 
@@ -368,7 +372,17 @@ class MainWindow:
         messagebox.showinfo("User", "Cambiar password (pendiente aquí).")
 
     def _user_add(self):
-        messagebox.showinfo("User", "Agregar usuario (pendiente).")
+        if not self.is_admin:
+            messagebox.showwarning("Permisos", "Solo admin puede agregar usuarios.")
+            return
+
+        try:
+            from src.ui.views.add_user_view import AddUserWindow
+            w = AddUserWindow(self.root, self.config, self.user_service)
+            self.root.wait_window(w.win)
+            # (Opcional) aquí no recargamos nada; luego haremos Users Manager.
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo abrir Agregar usuario:\n{e}")
 
     def _user_edit(self):
         messagebox.showinfo("User", "Editar usuario (pendiente).")
