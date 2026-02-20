@@ -330,10 +330,39 @@ class MainWindow:
 
 
     def _groups_add(self):
-        messagebox.showinfo("Groups", "Agregar Group (pendiente).")
+        if not self.can_edit:
+            messagebox.showwarning("Permisos", "No tienes permisos para agregar Groups.")
+            return
+
+        try:
+            from src.ui.views.add_group_view import AddGroupWindow
+            w = AddGroupWindow(self.root, self.config, self.groups_repo)
+            self.root.wait_window(w.win)
+
+            if w.created:
+                # Refresca Jobs porque el JOIN puede cambiar GroupName/ServiceName
+                self._load_jobs()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo abrir Agregar Group:\n{e}")
+
 
     def _groups_edit(self):
-        messagebox.showinfo("Groups", "Editar Group (pendiente).")
+        if not self.can_edit:
+            messagebox.showwarning("Permisos", "No tienes permisos para editar Groups.")
+            return
+
+        try:
+            from src.ui.views.groups_manager_view import GroupsManagerWindow
+            w = GroupsManagerWindow(self.root, self.config, self.groups_repo)
+            self.root.wait_window(w.win)
+
+            if w.changed:
+                self._load_jobs()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo abrir Groups Manager:\n{e}")
+
 
     def _user_change_password(self):
         messagebox.showinfo("User", "Cambiar password (pendiente aquí).")
