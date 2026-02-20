@@ -1,8 +1,17 @@
 ﻿import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, List
 
 from src.storage.database import Database
+
+@dataclass(frozen=True)
+class UserRow:
+    username: str
+    display_name: str
+    email: str
+    role_code: str
+    is_active: int
+    must_change_password: int
 
 
 @dataclass(frozen=True)
@@ -26,6 +35,66 @@ class UserRepository:
         self.col_must = os.getenv("COL_MUST_CHANGE", "must_change_password").strip()
         self.col_active = os.getenv("COL_IS_ACTIVE", "is_active").strip()
         self.col_role = os.getenv("COL_ROLE_CODE", "role_code").strip()
+
+    def list_users(self, limit: int = 5000) -> List[UserRow]:
+        sql = f"""
+        SELECT TOP ({limit})
+            username, display_name, ISNULL(email,''), role_code, is_active, must_change_password
+        FROM {self.table}
+        ORDER BY username ASC;
+        """
+        with self.db.get_connection() as conn:
+            cur = conn.cursor()
+            rows = cur.execute(sql).fetchall()
+
+        out: List[UserRow] = []
+        for r in rows:
+            out.append(
+                UserRow(
+                    username="" if r[0] is None else str(r[0]),
+                    display_name="" if r[1] is None else str(r[1]),
+                    email="" if r[2] is None else str(r[2]),
+                    role_code="" if r[3] is None else str(r[3]).lower(),
+                    is_active=int(r[4]) if r[4] is not None else 1,
+                    must_change_password=int(r[5]) if r[5] is not None else 0,
+                )
+            )
+        return out
+
+
+    def update_user(self, username: str, display_name: str, email: str | None, role_code: str, is_active: int) -> None:
+        sql = f"""
+        UPDATE {self.table}
+        SET
+            display_name = ?,
+            email = ?,
+            role_code = ?,
+            is_active = ?
+        WHERE username = ?;
+        """
+        with self.db.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(sql, (display_name, email, role_code, int(is_active), username))
+            if cur.rowcount == 0:
+                raise ValueError("No se actualizó ningún usuario (username no encontrado).")
+            conn.commit()
+
+
+    def reset_password(self, username: str, password_hash: str, password_algo: str = "argon2id") -> None:
+        sql = f"""
+        UPDATE {self.table}
+        SET
+            password_hash = ?,
+            password_algo = ?,
+            must_change_password = 1
+        WHERE username = ?;
+        """
+        with self.db.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(sql, (password_hash, password_algo, username))
+            if cur.rowcount == 0:
+                raise ValueError("No se reseteó password (username no encontrado).")
+            conn.commit()
 
 
     def get_by_username(self, username: str) -> Optional[UserRecord]:

@@ -385,7 +385,16 @@ class MainWindow:
             messagebox.showerror("Error", f"No se pudo abrir Agregar usuario:\n{e}")
 
     def _user_edit(self):
-        messagebox.showinfo("User", "Editar usuario (pendiente).")
+        if not self.is_admin:
+            messagebox.showwarning("Permisos", "Solo admin puede editar usuarios.")
+            return
+
+        try:
+            from src.ui.views.users_manager_view import UsersManagerWindow
+            w = UsersManagerWindow(self.root, self.config, self.user_repo, self.user_service)
+            self.root.wait_window(w.win)
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo abrir Users Manager:\n{e}")
 
     # --------------------------------------------------
 
