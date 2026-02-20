@@ -223,6 +223,7 @@ class LoginWindow:
                 self.root.destroy()
                 MainWindow(
                     self.config,
+                    user_id=result2.user_id,
                     username=result2.username,
                     role_code=getattr(result2, "role_code", "")
                 ).run()
@@ -234,6 +235,7 @@ class LoginWindow:
             self.root.destroy()
             MainWindow(
                 self.config,
+                user_id=result.user_id,
                 username=result.username,
                 role_code=getattr(result, "role_code", "")
             ).run()

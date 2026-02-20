@@ -9,7 +9,8 @@ from src.storage.groups_repository import GroupsRepository
 from src.storage.user_repository import UserRepository
 from src.service.user_service import UserService
 
-# NUEVO: modal reutilizable
+from src.storage.audit_log_repository import AuditLogRepository
+
 from src.ui.views.change_password_view import ChangePasswordWindow
 
 
@@ -21,8 +22,9 @@ class MainWindow:
         5: "Priority 4",
     }
 
-    def __init__(self, config: AppConfig, username: str, role_code: str = ""):
+    def __init__(self, config: AppConfig, user_id: int, username: str, role_code: str = ""):
         self.config = config
+        self.user_id = int(user_id)
         self.username = username
         self.role_code = (role_code or "viewer").lower().strip()
 
@@ -48,10 +50,22 @@ class MainWindow:
 
         self.root.configure(bg=self.bg)
 
-        # DB
+        # --------------------------------------------------
+        # DB + Repos
+        # --------------------------------------------------
         self.db = Database()
-        self.jobs_repo = JobsRepository(self.db)
-        self.groups_repo = GroupsRepository(self.db)
+
+        # Auditoría
+        self.audit_repo = AuditLogRepository(self.db)
+
+        # ✅ 2.3: conectamos audit_repo a repos (sin tocar vistas)
+        self.jobs_repo = JobsRepository(self.db, self.audit_repo)
+        self.groups_repo = GroupsRepository(self.db, self.audit_repo)
+
+        # ✅ 2.3: seteamos actor una vez
+        self.jobs_repo.set_actor(self.user_id)
+        self.groups_repo.set_actor(self.user_id)
+
         self.user_repo = UserRepository(self.db)
         self.user_service = UserService(self.user_repo)
 
@@ -63,18 +77,14 @@ class MainWindow:
         self._load_jobs()
 
     def _on_tree_double_click(self, _event=None):
-        # Si es viewer, no abrimos edit
         if not self.can_edit:
             return
 
-        # Asegura que haya una fila seleccionada
         selected = self.tree.selection()
         if not selected:
             return
 
-        # Reutilizamos la lógica existente
         self._jobs_edit()
-
 
     # --------------------------------------------------
     # UI STYLE
@@ -108,21 +118,18 @@ class MainWindow:
     def _build_menu(self):
         menubar = tk.Menu(self.root)
 
-        # Jobs
         jobs_menu = tk.Menu(menubar, tearoff=0)
         if self.can_edit:
             jobs_menu.add_command(label="Agregar", command=self._jobs_add)
             jobs_menu.add_command(label="Editar", command=self._jobs_edit)
         menubar.add_cascade(label="Jobs", menu=jobs_menu)
 
-        # Groups
         groups_menu = tk.Menu(menubar, tearoff=0)
         if self.can_edit:
             groups_menu.add_command(label="Agregar", command=self._groups_add)
             groups_menu.add_command(label="Editar", command=self._groups_edit)
         menubar.add_cascade(label="Groups", menu=groups_menu)
 
-        # User
         user_menu = tk.Menu(menubar, tearoff=0)
         user_menu.add_command(label="Cambiar password", command=self._user_change_password)
 
@@ -139,7 +146,6 @@ class MainWindow:
     # --------------------------------------------------
 
     def _build_ui(self):
-        # Top bar
         top = tk.Frame(self.root, bg=self.bg)
         top.pack(fill="x", padx=16, pady=(14, 8))
 
@@ -179,7 +185,6 @@ class MainWindow:
         self.search_entry.pack(side="left")
         self.search_entry.bind("<KeyRelease>", self._on_search_key)
 
-        # Table container
         table_box = tk.Frame(self.root, bg=self.bg)
         table_box.pack(fill="both", expand=True, padx=16, pady=(6, 16))
 
@@ -295,8 +300,6 @@ class MainWindow:
         item_id = selected[0]
         values = self.tree.item(item_id, "values")
 
-        # Columns order in tree:
-        # ("Id","Type","JobName","GroupCode","GroupName","ServiceName","IncidentPriority","CreatedAtUtc")
         try:
             job_id = int(values[0])
         except Exception:
@@ -308,13 +311,11 @@ class MainWindow:
             "type": values[1],
             "job_name": values[2],
             "group_code": values[3],
-            "incident_priority": values[6],  # "Priority 2/3/4"
-            # severity_int lo inferimos del priority
+            "incident_priority": values[6],
             "severity_int": None,
             "created_at_utc": values[7],
         }
 
-        # Infer severity from IncidentPriority (front only)
         priority_to_sev = {
             "Priority 2": 3,
             "Priority 3": 4,
@@ -335,7 +336,6 @@ class MainWindow:
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo abrir Editar Job:\n{e}")
 
-
     def _groups_add(self):
         if not self.can_edit:
             messagebox.showwarning("Permisos", "No tienes permisos para agregar Groups.")
@@ -347,12 +347,10 @@ class MainWindow:
             self.root.wait_window(w.win)
 
             if w.created:
-                # Refresca Jobs porque el JOIN puede cambiar GroupName/ServiceName
                 self._load_jobs()
 
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo abrir Agregar Group:\n{e}")
-
 
     def _groups_edit(self):
         if not self.can_edit:
@@ -370,7 +368,6 @@ class MainWindow:
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo abrir Groups Manager:\n{e}")
 
-
     def _user_change_password(self):
         try:
             mode = "admin" if self.is_admin else "self"
@@ -381,7 +378,7 @@ class MainWindow:
                 user_service=self.user_service,
                 mode=mode,
                 logged_username=self.username,
-                target_username=self.username,  # default (admin lo puede cambiar)
+                target_username=self.username,
             )
             self.root.wait_window(w.win)
         except Exception as e:
@@ -396,7 +393,6 @@ class MainWindow:
             from src.ui.views.add_user_view import AddUserWindow
             w = AddUserWindow(self.root, self.config, self.user_service)
             self.root.wait_window(w.win)
-            # (Opcional) aquí no recargamos nada; luego haremos Users Manager.
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo abrir Agregar usuario:\n{e}")
 
@@ -411,8 +407,6 @@ class MainWindow:
             self.root.wait_window(w.win)
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo abrir Users Manager:\n{e}")
-
-    # --------------------------------------------------
 
     def run(self):
         self.root.mainloop()

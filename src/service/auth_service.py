@@ -13,6 +13,7 @@ class AuthError(Exception):
 
 @dataclass(frozen=True)
 class AuthResult:
+    user_id: int
     username: str
     role_code: str
     must_change_password: bool
@@ -34,12 +35,13 @@ class AuthService:
         if not self._verify_password(password, user.password_hash, user.password_algo):
             raise AuthError("Usuario o password inválidos")
 
+        # ✅ cambio mínimo: incluir user_id
         return AuthResult(
+            user_id=int(user.user_id),
             username=user.username,
             role_code=(user.role_code or "").lower(),
             must_change_password=user.must_change_password
         )
-
 
     def _verify_password(self, plain: str, stored_hash: str, algo: str) -> bool:
         if not stored_hash:
@@ -63,7 +65,6 @@ class AuthService:
 
         # fallback: plain (solo para etapas tempranas si decides usarlo)
         return plain == stored_hash
-
 
     def change_password(self, username: str, new_password: str) -> None:
         new_password = (new_password or "").strip()

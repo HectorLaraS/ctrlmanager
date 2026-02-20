@@ -4,6 +4,7 @@ from typing import Optional, List
 
 from src.storage.database import Database
 
+
 @dataclass(frozen=True)
 class UserRow:
     username: str
@@ -16,6 +17,7 @@ class UserRow:
 
 @dataclass(frozen=True)
 class UserRecord:
+    user_id: int
     username: str
     password_hash: str
     password_algo: str
@@ -29,6 +31,10 @@ class UserRepository:
         self.db = db
 
         self.table = os.getenv("USERS_TABLE", "dbo.wt_users").strip()
+
+        # ✅ NUEVO: columna user_id (default a tu tabla real)
+        self.col_user_id = os.getenv("COL_USER_ID", "user_id").strip()
+
         self.col_user = os.getenv("COL_USERNAME", "username").strip()
         self.col_pass = os.getenv("COL_PASSWORD_HASH", "password_hash").strip()
         self.col_algo = os.getenv("COL_PASSWORD_ALGO", "password_algo").strip()
@@ -61,7 +67,6 @@ class UserRepository:
             )
         return out
 
-
     def update_user(self, username: str, display_name: str, email: str | None, role_code: str, is_active: int) -> None:
         sql = f"""
         UPDATE {self.table}
@@ -79,7 +84,6 @@ class UserRepository:
                 raise ValueError("No se actualizó ningún usuario (username no encontrado).")
             conn.commit()
 
-
     def reset_password(self, username: str, password_hash: str, password_algo: str = "argon2id") -> None:
         sql = f"""
         UPDATE {self.table}
@@ -96,10 +100,10 @@ class UserRepository:
                 raise ValueError("No se reseteó password (username no encontrado).")
             conn.commit()
 
-
     def get_by_username(self, username: str) -> Optional[UserRecord]:
         sql = f"""
         SELECT
+            {self.col_user_id},
             {self.col_user},
             {self.col_pass},
             {self.col_algo},
@@ -118,12 +122,13 @@ class UserRepository:
             return None
 
         return UserRecord(
-            username="" if row[0] is None else str(row[0]),
-            password_hash="" if row[1] is None else str(row[1]),
-            password_algo="" if row[2] is None else str(row[2]).lower(),
-            role_code="" if row[3] is None else str(row[3]).lower(),
-            must_change_password=bool(row[4]) if row[4] is not None else False,
-            is_active=bool(row[5]) if row[5] is not None else True,
+            user_id=int(row[0]) if row[0] is not None else 0,
+            username="" if row[1] is None else str(row[1]),
+            password_hash="" if row[2] is None else str(row[2]),
+            password_algo="" if row[3] is None else str(row[3]).lower(),
+            role_code="" if row[4] is None else str(row[4]).lower(),
+            must_change_password=bool(row[5]) if row[5] is not None else False,
+            is_active=bool(row[6]) if row[6] is not None else True,
         )
 
     # ==========================================================
@@ -161,7 +166,6 @@ class UserRepository:
     # (LEGACY) Tu método original preservado sin cambios de lógica
     # ==========================================================
     def _update_password_legacy(self, username: str, new_hash: str, algo: str = "argon2id") -> None:
-        # Nota: usamos parámetros para valores, pero tabla/columnas vienen del env
         sql = f"""
         UPDATE {self.table}
         SET
@@ -189,9 +193,6 @@ class UserRepository:
         is_active: int = 1,
         must_change_password: int = 1,
     ) -> None:
-        # Nota: usamos la tabla real por env (USERS_TABLE)
-        # y las columnas reales si ya las mapeaste.
-        # Para este insert usamos nombres estándar de tu tabla wt_users.
         sql = f"""
         INSERT INTO {self.table} (
             username,
